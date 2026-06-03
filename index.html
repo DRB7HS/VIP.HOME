@@ -302,6 +302,31 @@
             font-size: 20px;
         }
 
+        .chat-controls-top {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .refresh-top-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--accent-red);
+            color: #fff;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: 0.3s;
+        }
+
+        .refresh-top-btn:hover {
+            background: var(--accent-red);
+            box-shadow: 0 0 10px rgba(255, 42, 42, 0.4);
+        }
+
         .messages-container {
             flex: 1;
             padding: 20px;
@@ -309,6 +334,7 @@
             display: flex;
             flex-direction: column;
             gap: 15px;
+            position: relative;
         }
 
         .msg-bubble {
@@ -316,6 +342,8 @@
             gap: 12px;
             max-width: 75%;
             animation: fadeIn 0.3s ease;
+            cursor: pointer;
+            position: relative;
         }
 
         .msg-bubble.system-alert {
@@ -548,6 +576,43 @@
             color: var(--accent-red);
         }
 
+        .custom-context-menu {
+            position: fixed;
+            background: #121218;
+            border: 1px solid #333;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            z-index: 10000;
+            display: none;
+            flex-direction: column;
+            min-width: 140px;
+            overflow: hidden;
+        }
+
+        .context-menu-item {
+            padding: 10px 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #fff;
+            font-size: 14px;
+            cursor: pointer;
+            text-align: right;
+            transition: 0.2s;
+        }
+
+        .context-menu-item:hover {
+            background: rgba(255,255,255,0.05);
+        }
+
+        .context-menu-item.delete-item {
+            color: #ff2a2a;
+        }
+
+        .context-menu-item.delete-item:hover {
+            background: rgba(255, 42, 42, 0.1);
+        }
+
         @keyframes pulse {
             0% { box-shadow: 0 0 0 0 rgba(255, 42, 42, 0.7); }
             70% { box-shadow: 0 0 0 10px rgba(255, 42, 42, 0); }
@@ -671,9 +736,15 @@
                     <i class="fa-solid fa-comments"></i>
                     <h3 id="currentChatTitle">شات العام</h3>
                 </div>
-                <div class="counter-badge">
-                    <i class="fa-solid fa-circle"></i>
-                    <span>المتصلين: <strong id="liveCounter">1</strong></span>
+                <div class="chat-controls-top">
+                    <button class="refresh-top-btn" onclick="location.reload();">
+                        <i class="fa-solid fa-rotate"></i>
+                        <span>تحديث</span>
+                    </button>
+                    <div class="counter-badge">
+                        <i class="fa-solid fa-circle"></i>
+                        <span>المتصلين: <strong id="liveCounter">1</strong></span>
+                    </div>
                 </div>
             </div>
 
@@ -703,6 +774,21 @@
         </div>
     </div>
 
+    <div class="custom-context-menu" id="msgContextMenu">
+        <div class="context-menu-item delete-item" onclick="executeMenuAction('delete')">
+            <i class="fa-solid fa-xmark"></i>
+            <span>حذف الرسالة</span>
+        </div>
+        <div class="context-menu-item" onclick="executeMenuAction('copy')">
+            <i class="fa-solid fa-copy"></i>
+            <span>نسخ الرسالة</span>
+        </div>
+        <div class="context-menu-item" onclick="executeMenuAction('reply')">
+            <i class="fa-solid fa-reply"></i>
+            <span>رد</span>
+        </div>
+    </div>
+
     <script>
         let userData = {};
         let currentPlatform = "";
@@ -714,6 +800,9 @@
         let audioChunks = [];
         let localStream;
 
+        let selectedMessageElement = null;
+        let touchTimer = null;
+
         window.addEventListener('DOMContentLoaded', () => {
             const saved = localStorage.getItem('boka_hub_user');
             if(saved) {
@@ -721,6 +810,16 @@
                 initDashboard();
             }
             initCameraSystem();
+
+            setInterval(() => {
+                if(userData && userData.username) {
+                    renderActiveUsers(document.getElementById('userSearch').value);
+                }
+            }, 1000);
+
+            document.addEventListener('click', () => {
+                document.getElementById('msgContextMenu').style.display = 'none';
+            });
         });
 
         function nextStep(step) {
@@ -852,6 +951,7 @@
 
         function renderActiveUsers(filter = "") {
             const container = document.getElementById('activeUsersList');
+            const savedScroll = container.scrollTop;
             container.innerHTML = "";
 
             const generalRoom = document.createElement('div');
@@ -887,6 +987,7 @@
             }
             
             document.getElementById('liveCounter').innerText = "1";
+            container.scrollTop = savedScroll;
         }
 
         function filterUsers() {
@@ -926,7 +1027,7 @@
                         <div class="msg-header">
                             <span class="msg-username">${name}</span>
                         </div>
-                        <p style="font-size: 14px; line-height: 1.4; color: #fff;">${content}</p>
+                        <p class="msg-text-p" style="font-size: 14px; line-height: 1.4; color: #fff;">${content}</p>
                     </div>
                 `;
             } else {
@@ -941,12 +1042,60 @@
                 `;
             }
 
+            bubble.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                showContextMenu(e.clientX, e.clientY, bubble);
+            });
+
+            bubble.addEventListener('touchstart', (e) => {
+                touchTimer = setTimeout(() => {
+                    showContextMenu(e.touches[0].clientX, e.touches[0].clientY, bubble);
+                }, 600);
+            });
+
+            bubble.addEventListener('touchend', () => {
+                if(touchTimer) clearTimeout(touchTimer);
+            });
+
+            bubble.addEventListener('touchmove', () => {
+                if(touchTimer) clearTimeout(touchTimer);
+            });
+
             container.appendChild(bubble);
             container.scrollTop = container.scrollHeight;
 
             if (Notification.permission === "granted") {
                 new Notification(`رسالة من ${name}`, { body: isAudio ? "رسالة صوتية..." : content, icon: avatar });
             }
+        }
+
+        function showContextMenu(x, y, element) {
+            selectedMessageElement = element;
+            const menu = document.getElementById('msgContextMenu');
+            menu.style.display = 'flex';
+            menu.style.left = `${x}px`;
+            menu.style.top = `${y}px`;
+        }
+
+        function executeMenuAction(action) {
+            if(!selectedMessageElement) return;
+            
+            if(action === 'delete') {
+                selectedMessageElement.remove();
+            } else if(action === 'copy') {
+                const textEl = selectedMessageElement.querySelector('.msg-text-p');
+                if(textEl) {
+                    navigator.clipboard.writeText(textEl.innerText);
+                }
+            } else if(action === 'reply') {
+                const userEl = selectedMessageElement.querySelector('.msg-username');
+                if(userEl) {
+                    const input = document.getElementById('messageInputField');
+                    input.value = `الرد على @${userEl.innerText} : ` + input.value;
+                    input.focus();
+                }
+            }
+            document.getElementById('msgContextMenu').style.display = 'none';
         }
 
         async function startAudioRecord() {
