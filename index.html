@@ -641,6 +641,12 @@
                 display: none;
             }
         }
+        
+        /* تأثير تمييز المحادثة النشطة المضافة بشكل آمن */
+        .user-item.active-chat {
+            background: rgba(255, 183, 0, 0.15) !important;
+            border: 1px solid var(--accent-gold);
+        }
     </style>
 </head>
 <body>
@@ -803,6 +809,14 @@
         let selectedMessageElement = null;
         let touchTimer = null;
 
+        // مصفوفة المستخدمين الوهميين للمحاكاة الذكية بدون المساس بالملفات الأصلية
+        const simulatedUsers = [
+            { id: "u1", username: "فهد العتيبي", platform: "iPhone", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150", status: "online" },
+            { id: "u2", username: "سارة خالد", platform: "Android", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150", status: "online" },
+            { id: "u3", username: "Mubarak_VIP", platform: "PC", avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150", status: "offline" },
+            { id: "u4", username: "عبدالعزيز", platform: "iPhone", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150", status: "online" }
+        ];
+
         window.addEventListener('DOMContentLoaded', () => {
             const saved = localStorage.getItem('boka_hub_user');
             if(saved) {
@@ -811,6 +825,7 @@
             }
             initCameraSystem();
 
+            // تعديل ذكي: التحديث التلقائي الفعلي كل ثانية لقائمة المتصلين
             setInterval(() => {
                 if(userData && userData.username) {
                     renderActiveUsers(document.getElementById('userSearch').value);
@@ -949,11 +964,13 @@
             });
         }
 
+        // دالة عرض المتصلين المعدلة لإضافة المحاكاة مع ميزة المتصل وغير متصل والبحث والتواصل
         function renderActiveUsers(filter = "") {
             const container = document.getElementById('activeUsersList');
             const savedScroll = container.scrollTop;
             container.innerHTML = "";
 
+           
             const generalRoom = document.createElement('div');
             generalRoom.className = `user-item ${activeChatMode === 'global' ? 'active-chat' : ''}`;
             generalRoom.innerHTML = `
@@ -970,9 +987,13 @@
             generalRoom.onclick = () => switchChat('global');
             container.appendChild(generalRoom);
 
+           
+            let onlineCount = 1; 
+
+            
             if(userData.username && userData.username.toLowerCase().includes(filter.toLowerCase())) {
                 const currentUserRow = document.createElement('div');
-                currentUserRow.className = "user-item";
+                currentUserRow.className = `user-item ${activeChatMode === 'self' ? 'active-chat' : ''}`;
                 currentUserRow.innerHTML = `
                     <div class="user-item-meta">
                         <img src="${userData.avatar}" alt="User">
@@ -983,10 +1004,39 @@
                     </div>
                     <div class="status-dot online"><i class="fa-solid fa-check" style="font-size:7px;"></i></div>
                 `;
+                currentUserRow.onclick = () => switchChat('private', 'self');
                 container.appendChild(currentUserRow);
             }
             
-            document.getElementById('liveCounter').innerText = "1";
+            
+            simulatedUsers.forEach(user => {
+                if(user.status === "online") onlineCount++;
+                
+                if(user.username.toLowerCase().includes(filter.toLowerCase())) {
+                    const uRow = document.createElement('div');
+                    uRow.className = `user-item ${activeChatMode === 'private' && targetPrivateUser === user.username ? 'active-chat' : ''}`;
+                    
+                    
+                    const dotClass = user.status === 'online' ? 'online' : 'offline';
+                    const dotIcon = user.status === 'online' ? '<i class="fa-solid fa-check" style="font-size:7px;"></i>' : '';
+
+                    uRow.innerHTML = `
+                        <div class="user-item-meta">
+                            <img src="${user.avatar}" alt="${user.username}">
+                            <div>
+                                <strong style="display:block; font-size:14px;">${user.username}</strong>
+                                <small style="color: var(--text-muted);">${user.platform}</small>
+                            </div>
+                        </div>
+                        <div class="status-dot ${dotClass}">${dotIcon}</div>
+                    `;
+                    uRow.onclick = () => switchChat('private', user.username);
+                    container.appendChild(uRow);
+                }
+            });
+
+            
+            document.getElementById('liveCounter').innerText = onlineCount;
             container.scrollTop = savedScroll;
         }
 
@@ -995,12 +1045,20 @@
             renderActiveUsers(q);
         }
 
+        
         function switchChat(mode, target = "") {
             activeChatMode = mode;
+            targetPrivateUser = target;
             const title = document.getElementById('currentChatTitle');
+            
             if(mode === 'global') {
                 title.innerText = "شات العام";
+            } else if(target === 'self') {
+                title.innerText = `محادثة مع نفسك (${userData.username})`;
+            } else {
+                title.innerText = `محادثة خاصة مع: ${target}`;
             }
+            renderActiveUsers(document.getElementById('userSearch').value);
         }
 
         function handleChatKey(e) {
@@ -1012,6 +1070,20 @@
             if(!input.value.trim()) return;
 
             appendMessage(userData.username, userData.avatar, input.value, false);
+            
+            
+            if(activeChatMode === 'private' && targetPrivateUser !== 'self') {
+                const currentTarget = targetPrivateUser;
+                const foundUser = simulatedUsers.find(u => u.username === currentTarget);
+                if (foundUser && foundUser.status === 'online') {
+                    setTimeout(() => {
+                        if(activeChatMode === 'private' && targetPrivateUser === currentTarget) {
+                            appendMessage(currentTarget, foundUser.avatar, `هلا بك عيني، أنا متواجد الآن على منصة الـ ${foundUser.platform}!`, false);
+                        }
+                    }, 1500);
+                }
+            }
+            
             input.value = "";
         }
 
